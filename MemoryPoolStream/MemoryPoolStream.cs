@@ -1,12 +1,12 @@
 ﻿// Vitalii Danilov
-// Version 1.1.0
+// Version 1.2.0
 
 using System.Buffers;
 using System.Threading;
 
 namespace System.IO
 {
-    public class MemoryPoolStream : Stream, IDisposable
+    public class MemoryPoolStream : MemoryStream, IDisposable
     {
         private static readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
         private readonly bool _clearOnReturn;
@@ -25,7 +25,7 @@ namespace System.IO
                     throw new ArgumentOutOfRangeException("Non-negative number required.");
             }
         }
-        public int Capacity
+        public override int Capacity
         {
             get => _arrayBuffer.Length;
             set
@@ -44,6 +44,9 @@ namespace System.IO
         }
         private byte[] _arrayBuffer = Array.Empty<byte>();
         private int _position;
+        /// <summary>
+        /// Должен совпадать с _position после операции чтения или записи.
+        /// </summary>
         private int _bufferPosition;
         private int _disposed;
         private int _length;
@@ -110,7 +113,6 @@ namespace System.IO
             if (newPosition >= 0)
             {
                 _position = newPosition;
-                //_bufferPosition = newPosition;
 
                 // Нужно вернуть итоговую позицию.
                 return newPosition;
@@ -195,10 +197,66 @@ namespace System.IO
             }
         }
 
+        /// <summary>
+        /// Возвращает -1 если достигнут конец потока.
+        /// </summary>
+        public override int ReadByte()
+        {
+            ThrowIfDisposed();
+
+            // Сколько данных осталось в стриме.
+            int sizeLeft = _length - _position;
+            if (sizeLeft > 0)
+            {
+                byte b = _arrayBuffer[_position];
+
+                // Увеличить позицию стрима.
+                _position += 1;
+
+                // Курсор буфера совпадает с позицией стрима.
+                _bufferPosition = _position;
+
+                // Вернуть прочитанный байт.
+                return b;
+            }
+            return -1;
+        }
+
+        // TODO
+        public override void WriteByte(byte value)
+        {
+            ThrowIfDisposed();
+
+            PrepareAppend(1);
+
+            // Копируем в буффер.
+            _arrayBuffer[_position] = value;
+
+            // Увеличить позицию стрима.
+            _position += 1;
+
+            // Курсор буфера совпадает с позицией стрима.
+            _bufferPosition = _position;
+        }
+
         public override void Write(byte[] buffer, int offset, int count)
         {
             ThrowIfDisposed();
 
+            PrepareAppend(count);
+
+            // Копируем в буффер.
+            Buffer.BlockCopy(buffer, offset, _arrayBuffer, _position, count);
+
+            // Увеличить позицию стрима.
+            _position += count;
+
+            // Курсор буфера совпадает с позицией стрима.
+            _bufferPosition = _position;
+        }
+
+        private void PrepareAppend(int count)
+        {
             // Сколько нужно места в буфере.
             int requiredSize = _position + count;
 
@@ -268,21 +326,12 @@ namespace System.IO
                 // Размер стрима увеличен до требуемого размера.
                 _length = requiredSize;
             }
-
-            // Копируем в буффер.
-            Buffer.BlockCopy(buffer, offset, _arrayBuffer, _position, count);
-
-            // Увеличить позицию стрима.
-            _position += count;
-
-            // Курсор буфера совпадает с позицией стрима.
-            _bufferPosition = _position;
         }
 
         /// <summary>
-        /// Увеличивает размер буфера.
+        /// Увеличивает размер буфера сохраняя данные.
         /// </summary>
-        /// <param name="newSize">Необходимый размер буфера.</param>
+        /// <param name="newSize">Необходимый размер буфера. Новый буфер может быть больше указанного размера.</param>
         private void ReDim(int newSize)
         {
             // Арендовать новый буффер размером больше старого.
@@ -307,7 +356,7 @@ namespace System.IO
             _arrayBuffer = newArray;
         }
 
-        public byte[] ToArray()
+        public override byte[] ToArray()
         {
             ThrowIfDisposed();
 
