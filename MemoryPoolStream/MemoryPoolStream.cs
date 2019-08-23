@@ -1,5 +1,5 @@
 ﻿// Vitalii Danilov
-// Version 1.2.0
+// Version 1.2.1
 
 using System.Buffers;
 using System.Threading;
@@ -222,7 +222,6 @@ namespace System.IO
             return -1;
         }
 
-        // TODO
         public override void WriteByte(byte value)
         {
             ThrowIfDisposed();
@@ -380,6 +379,9 @@ namespace System.IO
                 // Если буфер не является Array.Empty<byte>().
                 if (_arrayBuffer.Length > 0)
                     _pool.Return(_arrayBuffer, _clearOnReturn);
+
+                if (disposing)
+                    GC.SuppressFinalize(this);
             }
         }
 
