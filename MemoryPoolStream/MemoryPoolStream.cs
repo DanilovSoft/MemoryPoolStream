@@ -1,7 +1,8 @@
 ﻿// Vitalii Danilov
-// Version 1.2.1
+// Version 1.2.2
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace System.IO
@@ -365,10 +366,13 @@ namespace System.IO
         }
 
         /// <exception cref="ObjectDisposedException"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ThrowIfDisposed()
         {
-            if (Volatile.Read(ref _disposed) == 1)
-                throw new ObjectDisposedException(GetType().FullName);
+            if (_disposed == 0)
+                return;
+
+            throw new ObjectDisposedException(GetType().FullName);
         }
 
         protected override void Dispose(bool disposing)
