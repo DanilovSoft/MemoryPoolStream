@@ -11,7 +11,14 @@ namespace ConsoleAppTest
 
         static void Main()
         {
-            _poolStream = new MemoryPoolStream(16);
+            var mem = new MemoryStream(16);
+            byte[] buf = mem.GetBuffer();
+
+            for (int i = 0; i < buf.Length; i++)
+            {
+                buf[i] = (byte)i;
+            }
+
             _poolStream = null;
             Test();
             return;

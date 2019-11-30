@@ -1,13 +1,14 @@
 ﻿// Vitalii Danilov
-// Version 1.2.2
+// Version 1.2.4
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace System.IO
 {
-    public class MemoryPoolStream : MemoryStream, IDisposable
+    internal sealed class MemoryPoolStream : MemoryStream, IDisposable
     {
         private static readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
         private readonly bool _clearOnReturn;
@@ -23,7 +24,7 @@ namespace System.IO
                 if (value >= 0)
                     _position = (int)value;
                 else
-                    throw new ArgumentOutOfRangeException("Non-negative number required.");
+                    throw new ArgumentOutOfRangeException(nameof(value), "Non-negative number required.");
             }
         }
         public override int Capacity
@@ -38,7 +39,7 @@ namespace System.IO
                         ReDim(value);
                     }
                     else
-                        throw new ArgumentOutOfRangeException("Capacity was less than the current size.");
+                        throw new ArgumentOutOfRangeException(nameof(value), "Capacity was less than the current size.");
                 }
             }
 
@@ -80,6 +81,11 @@ namespace System.IO
             return _arrayBuffer;
         }
 
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
         public override void Flush()
         {
             // Ничего флашить не нужно.
@@ -89,7 +95,7 @@ namespace System.IO
         {
             ThrowIfDisposed();
 
-            int newPosition = 0;
+            int newPosition;
             switch (origin)
             {
                 case SeekOrigin.Begin:
@@ -108,6 +114,8 @@ namespace System.IO
                         newPosition = (int)(_length + offset);
                     }
                     break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(origin));
             }
 
             // Позиция не может быть отрицательной.
@@ -121,7 +129,14 @@ namespace System.IO
             throw new IOException("An attempt was made to move the position before the beginning of the stream.");
         }
 
-        public override void SetLength(long value)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="value"></param>
+        /// <param name="clear">При увеличении размера стрима позволяет указать 
+        /// требуется ли очистить буфер начиная с текущей позиции до конца стрима. 
+        /// Значение по умолчанию — <see langword="true"/>.</param>
+        public void SetLength(long value, bool clear)
         {
             ThrowIfDisposed();
 
@@ -141,8 +156,11 @@ namespace System.IO
                         ReDim(newLength);
                     }
 
-                    // Обнулить часть буфера.
-                    Array.Clear(_arrayBuffer, _length, deltaLen);
+                    if (clear)
+                    {
+                        // Обнулить добавленную часть буфера (справа).
+                        Array.Clear(_arrayBuffer, _length, deltaLen);
+                    }
                 }
                 else
                 // Нужно уменьшить стрим.
@@ -163,6 +181,11 @@ namespace System.IO
             }
             else
                 throw new ArgumentOutOfRangeException(nameof(value), "Stream length must be non-negative and less than 2^31 - 1 - origin.");
+        }
+
+        public override void SetLength(long value)
+        {
+            SetLength(value, clear: true);
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -197,6 +220,14 @@ namespace System.IO
                 throw new ArgumentOutOfRangeException(nameof(count), "Buffer size less than requested count.");
             }
         }
+
+#if !NETSTANDARD2_0
+        // TODO
+        //public override int Read(Span<byte> destination)
+        //{
+        //    return base.Read(destination);
+        //}
+#endif
 
         /// <summary>
         /// Возвращает -1 если достигнут конец потока.
@@ -254,6 +285,24 @@ namespace System.IO
             // Курсор буфера совпадает с позицией стрима.
             _bufferPosition = _position;
         }
+
+#if !NETSTANDARD2_0
+        public override void Write(ReadOnlySpan<byte> source)
+        {
+            ThrowIfDisposed();
+
+            PrepareAppend(source.Length);
+
+            // Копируем в буффер.
+            source.CopyTo(_arrayBuffer.AsSpan(_position));
+
+            // Увеличить позицию стрима.
+            _position += source.Length;
+
+            // Курсор буфера совпадает с позицией стрима.
+            _bufferPosition = _position;
+        }
+#endif
 
         private void PrepareAppend(int count)
         {
@@ -383,9 +432,6 @@ namespace System.IO
                 // Если буфер не является Array.Empty<byte>().
                 if (_arrayBuffer.Length > 0)
                     _pool.Return(_arrayBuffer, _clearOnReturn);
-
-                if (disposing)
-                    GC.SuppressFinalize(this);
             }
         }
 
