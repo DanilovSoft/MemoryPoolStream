@@ -1,5 +1,5 @@
 ﻿// Vitalii Danilov
-// Version 1.2.4
+// Version 1.3.0
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace System.IO
 {
-    internal sealed class MemoryPoolStream : MemoryStream, IDisposable
+    public sealed class MemoryPoolStream : MemoryStream, IDisposable
     {
         private static readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
         private readonly bool _clearOnReturn;
@@ -79,6 +79,11 @@ namespace System.IO
             ThrowIfDisposed();
 
             return _arrayBuffer;
+        }
+
+        public override byte[] GetBuffer()
+        {
+            return DangerousGetBuffer();
         }
 
         public override Task FlushAsync(CancellationToken cancellationToken)
