@@ -1,5 +1,5 @@
 ﻿// Vitalii Danilov
-// Version 1.3.0
+// Version 1.4.0
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
@@ -14,7 +14,7 @@ namespace System.IO
         private readonly bool _clearOnReturn;
         public override bool CanRead => true;
         public override bool CanSeek => true;
-        public override bool CanWrite => true;
+        public override bool CanWrite => (!_readonly);
         public override long Length => _length;
         public override long Position
         {
@@ -32,6 +32,9 @@ namespace System.IO
             get => _arrayBuffer.Length;
             set
             {
+                // Предотвратить ReDim при readonly.
+                ThrowIfReadonly();
+
                 if (value != _arrayBuffer.Length)
                 {
                     if (value > _arrayBuffer.Length)
@@ -45,6 +48,13 @@ namespace System.IO
 
         }
         private byte[] _arrayBuffer = Array.Empty<byte>();
+        private bool _readonly;
+
+        public void MakeReadonly()
+        {
+            _readonly = true;
+        }
+
         private int _position;
         /// <summary>
         /// Должен совпадать с _position после операции чтения или записи.
@@ -73,6 +83,7 @@ namespace System.IO
         /// Возвращает массив байт, из которого был создан этот поток.
         /// Не используйте этот массив после любых операций с потоком.
         /// </summary>
+        /// <exception cref="ObjectDisposedException"/>
         /// <returns></returns>
         public byte[] DangerousGetBuffer()
         {
@@ -81,21 +92,53 @@ namespace System.IO
             return _arrayBuffer;
         }
 
+#if NETSTANDARD2_0
+
+        /// <exception cref="ObjectDisposedException"/>
+        public override bool TryGetBuffer(out ArraySegment<byte> buffer)
+        {
+            byte[] innerBuffer = DangerousGetBuffer();
+
+            buffer = new ArraySegment<byte>(innerBuffer);
+
+            // Этот стрим всегда разрешает получать внутренний буфер.
+            return true;
+        }
+#else
+
+        /// <exception cref="ObjectDisposedException"/>
+        public override bool TryGetBuffer(out ArraySegment<byte> buffer)
+        {
+            buffer = DangerousGetBuffer();
+
+            // Этот стрим всегда разрешает получать внутренний буфер.
+            return true;
+        }
+#endif
+
+        /// <exception cref="ObjectDisposedException"/>
         public override byte[] GetBuffer()
         {
             return DangerousGetBuffer();
         }
 
+        /// <summary>
+        /// Не выполняет ничего.
+        /// </summary>
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Не выполняет ничего.
+        /// </summary>
         public override void Flush()
         {
             // Ничего флашить не нужно.
         }
 
+        /// <exception cref="ObjectDisposedException"/>
         public override long Seek(long offset, SeekOrigin origin)
         {
             ThrowIfDisposed();
@@ -131,6 +174,8 @@ namespace System.IO
                 // Нужно вернуть итоговую позицию.
                 return newPosition;
             }
+
+            // newPosition меньше нуля.
             throw new IOException("An attempt was made to move the position before the beginning of the stream.");
         }
 
@@ -141,9 +186,11 @@ namespace System.IO
         /// <param name="clear">При увеличении размера стрима позволяет указать 
         /// требуется ли очистить буфер начиная с текущей позиции до конца стрима. 
         /// Значение по умолчанию — <see langword="true"/>.</param>
+        /// <exception cref="ObjectDisposedException"/>
         public void SetLength(long value, bool clear)
         {
             ThrowIfDisposed();
+            ThrowIfReadonly();
 
             // Проверить пользовательские параметры на выход за допустимые нормы.
             if (value >= 0 && value <= int.MaxValue)
@@ -188,11 +235,13 @@ namespace System.IO
                 throw new ArgumentOutOfRangeException(nameof(value), "Stream length must be non-negative and less than 2^31 - 1 - origin.");
         }
 
+        /// <exception cref="ObjectDisposedException"/>
         public override void SetLength(long value)
         {
             SetLength(value, clear: true);
         }
 
+        /// <exception cref="ObjectDisposedException"/>
         public override int Read(byte[] buffer, int offset, int count)
         {
             ThrowIfDisposed();
@@ -207,6 +256,7 @@ namespace System.IO
                     if (count > sizeLeft)
                         count = sizeLeft;
 
+                    // Копируем из внутреннего буфера в пользовательский.
                     Buffer.BlockCopy(_arrayBuffer, _position, buffer, offset, count);
 
                     // Увеличить позицию стрима.
@@ -218,10 +268,13 @@ namespace System.IO
                     // Вернуть сколько байт прочитано на самом деле.
                     return count;
                 }
+
+                // Достигнут конец стрима.
                 return 0;
             }
             else
             {
+                // Входные параметры невалидны.
                 throw new ArgumentOutOfRangeException(nameof(count), "Buffer size less than requested count.");
             }
         }
@@ -237,6 +290,7 @@ namespace System.IO
         /// <summary>
         /// Возвращает -1 если достигнут конец потока.
         /// </summary>
+        /// <exception cref="ObjectDisposedException"/>
         public override int ReadByte()
         {
             ThrowIfDisposed();
@@ -259,9 +313,11 @@ namespace System.IO
             return -1;
         }
 
+        /// <exception cref="ObjectDisposedException"/>
         public override void WriteByte(byte value)
         {
             ThrowIfDisposed();
+            ThrowIfReadonly();
 
             PrepareAppend(1);
 
@@ -275,9 +331,11 @@ namespace System.IO
             _bufferPosition = _position;
         }
 
+        /// <exception cref="ObjectDisposedException"/>
         public override void Write(byte[] buffer, int offset, int count)
         {
             ThrowIfDisposed();
+            ThrowIfReadonly();
 
             PrepareAppend(count);
 
@@ -292,9 +350,12 @@ namespace System.IO
         }
 
 #if !NETSTANDARD2_0
+
+        /// <exception cref="ObjectDisposedException"/>
         public override void Write(ReadOnlySpan<byte> source)
         {
             ThrowIfDisposed();
+            ThrowIfReadonly();
 
             PrepareAppend(source.Length);
 
@@ -383,7 +444,8 @@ namespace System.IO
         }
 
         /// <summary>
-        /// Увеличивает размер буфера сохраняя данные.
+        /// Увеличивает размер буфера сохраняя данные:
+        /// Арендует буфер большего размера, копирует данные из текущего буфера и возвращает его в пул.
         /// </summary>
         /// <param name="newSize">Необходимый размер буфера. Новый буфер может быть больше указанного размера.</param>
         private void ReDim(int newSize)
@@ -410,6 +472,10 @@ namespace System.IO
             _arrayBuffer = newArray;
         }
 
+        /// <summary>
+        /// Возвращает новую копию внутреннего буфера размером <see cref="Length"/>. 
+        /// </summary>
+        /// <exception cref="ObjectDisposedException"/>
         public override byte[] ToArray()
         {
             ThrowIfDisposed();
@@ -429,6 +495,16 @@ namespace System.IO
             throw new ObjectDisposedException(GetType().FullName);
         }
 
+        /// <exception cref="InvalidOperationException"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ThrowIfReadonly()
+        {
+            if (!_readonly)
+                return;
+
+            throw new InvalidOperationException("Unable write to stream in read-only state.");
+        }
+
         protected override void Dispose(bool disposing)
         {
             // Защита от повторного освобождения буфера.
@@ -437,6 +513,8 @@ namespace System.IO
                 // Если буфер не является Array.Empty<byte>().
                 if (_arrayBuffer.Length > 0)
                     _pool.Return(_arrayBuffer, _clearOnReturn);
+
+                // Не требуется GC.SuppressFinalize потому что это сделает базовый клас: MemoryStream.
             }
         }
 

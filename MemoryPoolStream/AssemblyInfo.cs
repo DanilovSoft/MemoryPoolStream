@@ -1,4 +1,7 @@
 ﻿
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("UnitTests")]
+[assembly: InternalsVisibleTo("UnitTests, PublicKey=002400000480000094000000060200000024000052534131000400000100010071ad5d6c5bdc2f" +
+    "f74c992cba5cd8d7b6941da226401dae8fb95340804a66ec3cd6a3b71c4c123d0ff8d29b5ec96a" +
+    "24c5389782c89ef059605a1117a1df761085a7a90841b50ea298ae3e828a4f6cbce51ed31970ea" +
+    "142345882932b1ae3a090c14d4fcf291fecd9a88b54e6ddb11c6ba5c7be2746941dfa1a88b37897f17bced")]
