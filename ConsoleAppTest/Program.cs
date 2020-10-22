@@ -7,29 +7,15 @@ namespace ConsoleAppTest
 {
     class Program
     {
-        private static MemoryPoolStream _poolStream = new MemoryPoolStream(16);
+        private static BufferStream _bufStream;
 
         static void Main()
         {
-            var mem = new MemoryStream(16);
-            byte[] buf = mem.GetBuffer();
+            _bufStream = new BufferStream(new byte[10], writable: false, publiclyVisible: true);
 
-            for (int i = 0; i < buf.Length; i++)
-            {
-                buf[i] = (byte)i;
-            }
+            var buf = new byte[5];
+            int n = _bufStream.Read(buf);
 
-            _poolStream = null;
-            Test();
-            return;
-        }
-
-        static void Test()
-        {
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true);
-            GC.WaitForFullGCComplete();
-            GC.WaitForPendingFinalizers();
-            Thread.Sleep(-1);
         }
     }
 }
