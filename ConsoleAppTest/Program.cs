@@ -1,35 +1,47 @@
 ﻿using System;
 using System.Buffers;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
+using ImageMagick;
 
 namespace ConsoleAppTest
 {
     class Program
     {
-        private static MemoryPoolStream _poolStream = new MemoryPoolStream(16);
-
         static void Main()
         {
-            var mem = new MemoryStream(16);
-            byte[] buf = mem.GetBuffer();
+            byte[] data = File.ReadAllBytes("E:\\Temp\\st_ak_a101.png");
 
-            for (int i = 0; i < buf.Length; i++)
+            Memory<byte> mem = data;
+
+            var stream = new SpanStream((ReadOnlyMemory<byte>)mem);
+
+            using (var image = new MagickImage(stream))
             {
-                buf[i] = (byte)i;
+                if (image.HasAlpha)
+                {
+                    // Сначала нужно задать цвет фона.
+                    image.BackgroundColor = MagickColors.White;
+
+                    // Затем удалим 4-й канал - прозрачность.
+                    image.Alpha(AlphaOption.Remove);
+                }
+
+                var colors = image.TotalColors;
+
+                image.FilterType = ImageMagick.FilterType.Lanczos;
+                image.Resize(500, 0);
+
+                //image.Quantize(new QuantizeSettings
+                //{
+                //    Colors = 256,
+                //    DitherMethod = DitherMethod.No
+                //});
+                
+                image.Write("E:\\Temp\\test.png", MagickFormat.Png8);
             }
-
-            _poolStream = null;
-            Test();
-            return;
-        }
-
-        static void Test()
-        {
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true);
-            GC.WaitForFullGCComplete();
-            GC.WaitForPendingFinalizers();
-            Thread.Sleep(-1);
         }
     }
 }

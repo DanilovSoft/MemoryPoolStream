@@ -8,12 +8,16 @@ using System.Threading.Tasks;
 
 namespace System.IO
 {
+    /// <summary>
+    /// Использует <see cref="ArrayPool{Byte}.Shared"/>
+    /// </summary>
     public sealed class MemoryPoolStream : MemoryStream, IDisposable
     {
         private static readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
         private readonly bool _clearOnReturn;
         public override bool CanRead => true;
         public override bool CanSeek => true;
+        public override bool CanTimeout => false;
         public override bool CanWrite => (!_readonly);
         public override long Length => _length;
         public override long Position
@@ -174,9 +178,11 @@ namespace System.IO
                 // Нужно вернуть итоговую позицию.
                 return newPosition;
             }
-
+            else
             // newPosition меньше нуля.
-            throw new IOException("An attempt was made to move the position before the beginning of the stream.");
+            {
+                throw new IOException("An attempt was made to move the position before the beginning of the stream.");
+            }
         }
 
         /// <summary>
@@ -268,9 +274,11 @@ namespace System.IO
                     // Вернуть сколько байт прочитано на самом деле.
                     return count;
                 }
-
-                // Достигнут конец стрима.
-                return 0;
+                else
+                {
+                    // Достигнут конец стрима.
+                    return 0;
+                }
             }
             else
             {
