@@ -10,6 +10,8 @@ namespace ConsoleAppTest
 {
     class Program
     {
+        private static BufferStream _bufStream;
+
         static void Main()
         {
             byte[] data = File.ReadAllBytes("E:\\Temp\\st_ak_a101.png");
@@ -17,6 +19,7 @@ namespace ConsoleAppTest
             Memory<byte> mem = data;
 
             var stream = new SpanStream((ReadOnlyMemory<byte>)mem);
+            _bufStream = new BufferStream(new byte[10], writable: false, publiclyVisible: true);
 
             using (var image = new MagickImage(stream))
             {
@@ -28,6 +31,8 @@ namespace ConsoleAppTest
                     // Затем удалим 4-й канал - прозрачность.
                     image.Alpha(AlphaOption.Remove);
                 }
+            var buf = new byte[5];
+            int n = _bufStream.Read(buf);
 
                 var colors = image.TotalColors;
 
